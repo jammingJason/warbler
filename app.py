@@ -4,7 +4,7 @@ from flask import Flask, render_template, request, flash, redirect, session, g
 from flask_debugtoolbar import DebugToolbarExtension
 from sqlalchemy.exc import IntegrityError
 
-from forms import UserAddForm, LoginForm, MessageForm
+from forms import UserAddForm, LoginForm, MessageForm, UserEditForm
 from models import db, connect_db, User, Message
 
 CURR_USER_KEY = "curr_user"
@@ -17,8 +17,9 @@ app.config['SQLALCHEMY_DATABASE_URI'] = (
     os.environ.get('DATABASE_URL', 'postgresql:///warbler'))
 
 app.config['SQLALCHEMY_TRACK_MODIFICATIONS'] = False
+app.config['DEBUG_TB_INTERCEPT_REDIRECTS'] = False
 app.config['SQLALCHEMY_ECHO'] = False
-app.config['DEBUG_TB_INTERCEPT_REDIRECTS'] = True
+# app.config['DEBUG_TB_INTERCEPT_REDIRECTS'] = True
 app.config['SECRET_KEY'] = os.environ.get('SECRET_KEY', "it's a secret")
 toolbar = DebugToolbarExtension(app)
 
@@ -112,7 +113,9 @@ def login():
 @app.route('/logout')
 def logout():
     """Handle logout of user."""
-
+    do_logout()
+    flash('You have been logged out!', 'warning')
+    return redirect('/login')
     # IMPLEMENT THIS
 
 
@@ -210,8 +213,19 @@ def stop_following(follow_id):
 @app.route('/users/profile', methods=["GET", "POST"])
 def profile():
     """Update profile for current user."""
+    user = User.query.get(g.user.id)
+    form = UserEditForm(obj=user)
+    if form.validate_on_submit():
+        user.username = form.username.data
+        user.email = form.email.data
+        user.bio = form.bio.data
+        user.location = form.location.data
+        user.header_image_url = form.header_image_url.data
+        user.image_url = form.image_url.data
+        db.session.commit()
+        return redirect(f'/users/{g.user.id}')
 
-    # IMPLEMENT THIS
+    return render_template('users/edit.html', form=form)
 
 
 @app.route('/users/delete', methods=["POST"])
@@ -292,8 +306,15 @@ def homepage():
     """
 
     if g.user:
+        new_arr = [g.user.id]
+        for following_user in g.user.following:
+            new_arr.append(following_user.id)
+
+        # messages = db.session.query(Message).filter(
+        #     Message.id.in_(new_arr))
         messages = (Message
                     .query
+                    .filter(Message.user_id.in_(new_arr))
                     .order_by(Message.timestamp.desc())
                     .limit(100)
                     .all())
@@ -304,12 +325,16 @@ def homepage():
         return render_template('home-anon.html')
 
 
+def getMeResuts():
+    return 1
+
 ##############################################################################
 # Turn off all caching in Flask
 #   (useful for dev; in production, this kind of stuff is typically
 #   handled elsewhere)
 #
 # https://stackoverflow.com/questions/34066804/disabling-caching-in-flask
+
 
 @app.after_request
 def add_header(req):
