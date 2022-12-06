@@ -5,7 +5,7 @@ from flask_debugtoolbar import DebugToolbarExtension
 from sqlalchemy.exc import IntegrityError
 
 from forms import UserAddForm, LoginForm, MessageForm, UserEditForm
-from models import db, connect_db, User, Message
+from models import db, connect_db, User, Message, Likes
 
 CURR_USER_KEY = "curr_user"
 
@@ -294,6 +294,36 @@ def messages_destroy(message_id):
 
 
 ##############################################################################
+# Likes section
+@app.route('/users/add_like/<msg_id>', methods=['POST'])
+def like_it(msg_id):
+    if g.user:
+        old_like = Likes.query.filter(
+            Likes.message_id == msg_id, Likes.user_id == g.user.id).first()
+        if old_like:
+            db.session.delete(old_like)
+            db.session.commit()
+            return redirect('/')
+        new_like = Likes(user_id=g.user.id, message_id=msg_id)
+        db.session.add(new_like)
+        db.session.commit()
+        return redirect('/')
+
+
+@app.route('/users/<int:user_id>/likes')
+def show_likes(user_id):
+    like_ids = []
+    likes = Likes.query.filter_by(user_id=user_id).all()
+    for like in likes:
+        like_ids.append(like.message_id)
+    messages = (Message
+                .query
+                .filter(Message.id.in_(like_ids))
+                .order_by(Message.timestamp.desc())
+                .all())
+    return render_template('users/likes.html', messages=messages)
+
+##############################################################################
 # Homepage and error pages
 
 
@@ -312,6 +342,10 @@ def homepage():
 
         # messages = db.session.query(Message).filter(
         #     Message.id.in_(new_arr))
+        like_ids = []
+        likes = Likes.query.filter_by(user_id=g.user.id).all()
+        for like in likes:
+            like_ids.append(like.message_id)
         messages = (Message
                     .query
                     .filter(Message.user_id.in_(new_arr))
@@ -319,14 +353,11 @@ def homepage():
                     .limit(100)
                     .all())
 
-        return render_template('home.html', messages=messages)
+        return render_template('home.html', messages=messages, likes=like_ids)
 
     else:
         return render_template('home-anon.html')
 
-
-def getMeResuts():
-    return 1
 
 ##############################################################################
 # Turn off all caching in Flask
