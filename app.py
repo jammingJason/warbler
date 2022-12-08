@@ -224,7 +224,7 @@ def profile():
         user.image_url = form.image_url.data
         db.session.commit()
         return redirect(f'/users/{g.user.id}')
-
+    
     return render_template('users/edit.html', form=form)
 
 
